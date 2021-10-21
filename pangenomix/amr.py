@@ -9,6 +9,7 @@ Scripts for managing AMR annotation (not analysis), including
 a wrapper for CARD's RGI tool.
 """
 
+from __future__ import print_function
 import subprocess as sp
 import os
 import pandas as pd
@@ -74,7 +75,7 @@ def add_probable_hits(df_aro, df_prob, organism, print_additions=False):
         else: # did not match CARD hit, inferred from annotation
             aro_label = 'Inferred'
         if print_additions:
-            print feature, drug, annot 
+            print(feature, drug, annot)
         new_features = {feature: {'ARO': aro_label, drug: 1.0}}
         df_new = pd.DataFrame.from_dict(new_features, orient='index')
         df_aro_ext = df_aro_ext.append(df_new.reindex(df_aro.columns, axis=1))
@@ -189,13 +190,14 @@ def generate_probable_hits_from_annotations(df_aro, annotations_file,
             search_terms[drug].append(aro_names[aro])
                 
     ''' Adding manually curated terms '''
-    for drug in filter(lambda x: x in drugs_of_interest, manual_annots.keys()):
+    curated_terms = [x for x in manual_annots.keys() if x in drugs_of_interest]
+    for drug in curated_terms:
         if not drug in search_terms:
             search_terms[drug] = manual_annots[drug]
         else:
             search_terms[drug] += list(manual_annots[drug]) 
     search_terms = {k:set(v) for k,v in search_terms.items()} # remove redundancies
-    print search_terms
+    print(search_terms)
     
     ''' Screen annotations from shared or relevant terms '''
     columns = ('feature', 'drug', 'shared_annot', 'card_hits', 'related_aros')
@@ -204,7 +206,7 @@ def generate_probable_hits_from_annotations(df_aro, annotations_file,
         for line in f:
             data = line.strip().split('\t')
             feature = data[0]; annots = data[1:]
-            annots = filter(lambda x: not x in excluded_annots, annots)
+            annots = [x for x in annots if (not x in excluded_annots)]
             for annot in annots:
                 annot_lower = annot.lower()
                 if annot in annot_to_amr: # checking identical annotations to CARD hits
@@ -277,8 +279,8 @@ def run_rgi(fasta_in, rgi_out, rgi_args={'-a':'DIAMOND', '-n':1},
     args = [rgi_path, 'main', '-i', fasta, '-o', rgi_out, '-t', mode]
     for key, value in rgi_args.items():
         args += [key, str(value)]
-    print ' '.join(args)
-    print sp.check_output(args)
+    print(' '.join(args))
+    print(sp.check_output(args))
     
     if clean_headers: # delete temporary fasta
         os.remove(fasta_tmp)
@@ -326,7 +328,7 @@ def build_resistome(rgi_txt, drugs, G_aro, skip_loose=True, return_path_lengths=
         ''' Get ARO for RGI allele '''
         i, allele, aro = row
         if allele in allele_to_drug: # allele mapped to multiple AROs
-            print 'Duplicate hit:', allele
+            print('Duplicate hit:', allele)
         allele_to_drug[allele] = {'ARO': aro}
         
         ''' Use ARO to map against drugs '''
