@@ -18,6 +18,7 @@ Pan-genome feature nomenclature:
 <name>_T#A# = Noncoding transcript/RNA sequence variant
 """
 
+from __future__ import print_function
 import os, shutil, urllib
 import subprocess as sp
 import hashlib 
@@ -34,7 +35,7 @@ VARIANT_TYPES_REV = {v:k for k,v in VARIANT_TYPES.items()}
 DNA_COMPLEMENT = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 
               'W': 'W', 'S': 'S', 'R': 'Y', 'Y': 'R', 
               'M': 'K', 'K': 'M', 'N': 'N'}
-for bp in DNA_COMPLEMENT.keys():
+for bp in list(DNA_COMPLEMENT.keys()):
     DNA_COMPLEMENT[bp.lower()] = DNA_COMPLEMENT[bp].lower()
 
     
@@ -88,7 +89,7 @@ def build_cds_pangenome(genome_faa_paths, output_dir, name='Test',
     '''
     
     ''' Merge FAAs into one file with non-redundant sequences '''
-    print 'Identifying non-redundant CDS sequences...'
+    print('Identifying non-redundant CDS sequences...')
     output_nr_faa = output_dir + '/' + name + '_nr.faa' # final non-redundant FAA files
     output_shared_headers = output_dir + '/' + name + '_redundant_headers.tsv' # records headers that have the same sequence
     output_missing_headers = output_dir + '/' + name + '_missing_headers.txt' # records headers without any seqeunce
@@ -129,14 +130,14 @@ def build_cds_pangenome(genome_faa_paths, output_dir, name='Test',
     output_gene_csv = output_gene_table + '.csv.gz'
     output_allele_pickle = output_allele_table + '.pickle.gz'
     output_gene_pickle = output_gene_table + '.pickle.gz'
-    print 'Saving', output_allele_pickle, '...'
+    print('Saving', output_allele_pickle, '...')
     df_alleles.to_pickle(output_allele_pickle)
-    print 'Saving', output_gene_pickle, '...'
+    print('Saving', output_gene_pickle, '...')
     df_genes.to_pickle(output_gene_pickle)
     if save_csv:
-        print 'Saving', output_allele_csv, '...'
+        print('Saving', output_allele_csv, '...')
         df_alleles.to_csv(output_allele_csv)
-        print 'Saving', output_gene_csv, '...'
+        print('Saving', output_gene_csv, '...')
         df_genes.to_csv(output_gene_csv)
 
     return df_alleles, df_genes
@@ -199,7 +200,7 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
     '''
     
     ''' Extract non-coding sequences from all genomes '''
-    print 'Extracting non-coding sequences...'
+    print('Extracting non-coding sequences...')
     genome_noncoding_paths = []
     for i, gff_fna in enumerate(genome_data):
         ''' Prepare output path '''
@@ -212,13 +213,13 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
         genome_nc = genome_nc_dir + genome + '_noncoding.fna'
             
         ''' Extract non-coding sequences '''
-        print i+1, genome
+        print(i+1, genome)
         genome_noncoding_paths.append(genome_nc)
         extract_noncoding(genome_gff, genome_fna, genome_nc, 
             flanking=flanking, allowed_features=allowed_features)
         
     ''' Reduce to non-redundant sequence set '''
-    print 'Identifying non-redundant non-coding sequences...'
+    print('Identifying non-redundant non-coding sequences...')
     output_nr_fna = output_dir + '/' + name + '_noncoding_nr.fna' # final non-redundant FNA files
     output_shared_headers = output_dir + '/' + name + '_noncoding_redundant_headers.tsv' 
         # records headers that have the same sequence
@@ -264,14 +265,14 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
     output_gene_csv = output_gene_table + '.csv.gz'
     output_allele_pickle = output_allele_table + '.pickle.gz'
     output_gene_pickle = output_gene_table + '.pickle.gz'
-    print 'Saving', output_allele_pickle, '...'
+    print('Saving', output_allele_pickle, '...')
     df_nc_alleles.to_pickle(output_allele_pickle)
-    print 'Saving', output_gene_pickle, '...'
+    print('Saving', output_gene_pickle, '...')
     df_nc_genes.to_pickle(output_gene_pickle)
     if save_csv:
-        print 'Saving', output_allele_csv, '...'
+        print('Saving', output_allele_csv, '...')
         df_nc_alleles.to_csv(output_allele_csv)
-        print 'Saving', output_gene_csv, '...'
+        print('Saving', output_gene_csv, '...')
         df_nc_genes.to_csv(output_gene_csv)
     
     return df_nc_alleles, df_nc_genes
@@ -341,7 +342,7 @@ def consolidate_seqs(genome_paths, nr_out, shared_headers_out, missing_headers_o
             if len(headers) > 1:
                 f_header_out.write('\t'.join(headers) + '\n')
     if missing_headers_out:
-        print 'Headers without sequences:', len(missing_headers)
+        print('Headers without sequences:', len(missing_headers))
         with open(missing_headers_out, 'w+') as f_header_out:
             for header in missing_headers:
                 f_header_out.write(header + '\n')
@@ -372,9 +373,9 @@ def cluster_with_cdhit(fasta_file, cdhit_out, cdhit_args={'-n':5, '-c':0.8}):
     args = [cdhit_prog, '-i', fasta_file, '-o', cdhit_out, '-d', '0']
     for arg in cdhit_args:
         args += [arg, str(cdhit_args[arg])]
-    print 'Running:', args
+    print('Running:', args)
     for line in __stream_stdout__(' '.join(args)):
-        print line
+        print(line)
 
         
 def rename_genes_and_alleles(clstr_file, nr_fasta_in, nr_fasta_out, 
@@ -460,7 +461,7 @@ def rename_genes_and_alleles(clstr_file, nr_fasta_in, nr_fasta_out,
                         f_fasta_new.write('>' + allele_name + '\n')
                         missing = False
                     else:
-                        print 'MISSING:', allele_header
+                        print('MISSING:', allele_header)
                         missing = True
                 elif not missing: # writing sequence line
                     f_fasta_new.write(line)
@@ -472,15 +473,15 @@ def rename_genes_and_alleles(clstr_file, nr_fasta_in, nr_fasta_out,
     
     ''' If available, use exonerate.fastasort to sort entries in fasta file '''
     if fastasort_path:
-        print 'Sorting sequences by header...'
+        print('Sorting sequences by header...')
         args = ['./' + fastasort_path, nr_fasta_out]
         with open(nr_fasta_out + '.tmp', 'w+') as f_sort:
             #sp.call(args, stdout=f_sort)
             p = sp.Popen(args, stdout=f_sort, stderr=sp.PIPE)
             stdout, stderr = p.communicate()
-            print stderr
+            print(stderr)
         if p.returncode == 1: # sorting failed
-            print 'Aborting sort, exitcode', p.returncode
+            print('Aborting sort, exitcode', p.returncode)
             os.remove(nr_fasta_out + '.tmp')
         else: # sorting passed (probably)
             os.rename(nr_fasta_out + '.tmp', nr_fasta_out)
@@ -523,26 +524,26 @@ def build_genetic_feature_tables(clstr_file, genome_fasta_paths, name='Test', cl
     '''
     
     ''' Load header-allele mappings '''
-    print 'Loadings header-allele mappings...'
+    print('Loadings header-allele mappings...')
     header_to_allele = load_header_to_allele(clstr_file, 
         shared_header_file, header_to_allele, cluster_type)
                     
     ''' Initialize gene and allele tables '''
     genome_order = sorted([__get_genome_from_filename__(x) for x in genome_fasta_paths]) 
         # for genome names, trim .faa from filenames
-    print 'Sorting alleles...'
+    print('Sorting alleles...')
     allele_order = sorted(list(set(header_to_allele.values())))
     
-    print 'Sorting clusters...'
+    print('Sorting clusters...')
     gene_order = []; last_gene = None
     for allele in allele_order:
         gene = __get_gene_from_allele__(allele)
         if gene != last_gene:
             gene_order.append(gene)
             last_gene = gene
-    print 'Genomes:', len(genome_order)
-    print 'Clusters:', len(gene_order)
-    print 'Alleles:', len(allele_order)
+    print('Genomes:', len(genome_order))
+    print('Clusters:', len(gene_order))
+    print('Alleles:', len(allele_order))
     
     ''' To use sparse matrix, map genomes, alleles, and genes to positions '''
     allele_indices = {allele_order[i]:i for i in range(len(allele_order))}
@@ -570,7 +571,7 @@ def build_genetic_feature_tables(clstr_file, genome_fasta_paths, name='Test', cl
                             gene_i = gene_indices[gene]
                             gene_arrays[genome][gene_i] = 1
                         else:
-                            print 'MISSING:', header
+                            print('MISSING:', header)
                     header = __get_header_from_fasta_line__(line)
                     seq = '' # reset sequence
                 else: # sequence line encountered
@@ -584,17 +585,17 @@ def build_genetic_feature_tables(clstr_file, genome_fasta_paths, name='Test', cl
                     gene_i = gene_indices[gene]
                     gene_arrays[genome][gene_i] = 1
                 else:
-                    print 'MISSING:', header
+                    print('MISSING:', header)
                 
         allele_arrays[genome] = pd.SparseArray(allele_arrays[genome])
         gene_arrays[genome] = pd.SparseArray(gene_arrays[genome])
         allele_arrays[genome].fill_value = np.nan
         gene_arrays[genome].fill_value = np.nan
-        print 'Updating genome', i+1, ':', genome, 
-        print '\tAlleles:', allele_arrays[genome].sum(), '\tClusters:', gene_arrays[genome].sum()
+        print('Updating genome', i+1, ':', genome, end=' ')
+        print('\tAlleles:', allele_arrays[genome].sum(), '\tClusters:', gene_arrays[genome].sum())
         
     ''' Construct DataFrame '''
-    print 'Building DataFrame...'
+    print('Building DataFrame...')
     df_alleles = pd.DataFrame(data=allele_arrays, index=allele_order)
     df_genes = pd.DataFrame(data=gene_arrays, index=gene_order)
     return df_alleles, df_genes
@@ -738,11 +739,11 @@ def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side
     '''
     
     ''' Load header-allele name mapping '''
-    print 'Loading header-allele mapping...'
+    print('Loading header-allele mapping...')
     feature_to_allele = __load_feature_to_allele__(allele_names)
         
     ''' Generate proximal sequences '''
-    print 'Extracting', side, 'sequences...'
+    print('Extracting', side, 'sequences...')
     genome_proximals = []
     for i, gff_fna in enumerate(genome_data):
         ''' Prepare output path '''
@@ -755,7 +756,7 @@ def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side
         genome_prox = genome_prox_dir + genome + '_' + side + '.fna'
             
         ''' Extract proximal sequences '''
-        print i+1, genome
+        print(i+1, genome)
         genome_proximals.append(genome_prox)
         extract_proximal_sequences(genome_gff, genome_fna, genome_prox, 
                                    limits=limits, side=side,
@@ -764,14 +765,14 @@ def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side
                                    max_overlap=max_overlap)
         
     ''' Consolidate non-redundant proximal sequences per gene '''
-    print 'Identifying non-redundant', side, 'sequences per gene...'
+    print('Identifying non-redundant', side, 'sequences per gene...')
     nr_prox_out = output_dir + '/' + name + '_nr_' + side + '.fna'
     nr_prox_out = nr_prox_out.replace('//','/')
     df_proximal = consolidate_proximal(genome_proximals, nr_prox_out, feature_to_allele, side)
     
     ''' Optionally sort non-redundant proximal sequences file '''
     if fastasort_path:
-        print 'Sorting sequences by header...'
+        print('Sorting sequences by header...')
         args = ['./' + fastasort_path, nr_prox_out]
         with open(nr_prox_out + '.tmp', 'w+') as f_sort:
             sp.call(args, stdout=f_sort)
@@ -782,10 +783,10 @@ def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side
     prox_table_out = prox_table_out.replace('//','/')
     prox_table_pickle = prox_table_out + '.pickle.gz'
     prox_table_csv = prox_table_out + '.csv.gz'
-    print 'Saving', prox_table_pickle, '...'
+    print('Saving', prox_table_pickle, '...')
     df_proximal.to_pickle(prox_table_pickle)
     if save_csv:
-        print 'Saving', prox_table_csv, '...'
+        print('Saving', prox_table_csv, '...')
         df_proximal.to_csv(prox_table_csv)
     return df_proximal
 
@@ -879,7 +880,7 @@ def consolidate_proximal(genome_proximals, nr_proximal_out, feature_to_allele, s
                     new_sequence = False
                     
     ''' Convert nested dict to dict of genome:SparseArrays once all proximal sequences are known '''
-    print 'Sparsifying', side, 'table...'
+    print('Sparsifying', side, 'table...')
     prox_order = sorted(list(unique_proximal_ids))
     del unique_proximal_ids
     prox_indices = {prox_order[i]:i for i in range(len(prox_order))} # map proximal ID to index
@@ -891,7 +892,7 @@ def consolidate_proximal(genome_proximals, nr_proximal_out, feature_to_allele, s
         genome_to_proximal[genome] = pd.SparseArray(prox_array)
         genome_to_proximal[genome].fill_value = np.nan
         
-    print 'Constructing DataFrame...'
+    print('Constructing DataFrame...')
     df_proximal = pd.DataFrame(data=genome_to_proximal, index=prox_order)
     return df_proximal
 
@@ -980,10 +981,10 @@ def extract_proximal_sequences(genome_gff, genome_fna, proximal_out, limits, max
             rightbound += max_overlap
             if utr_start < leftbound: # 5' overlap exceeds limit
                 utr_start = leftbound
-                #print 'UTR start overlap for', start, stop
+                #print('UTR start overlap for', start, stop)
             if utr_stop > rightbound: # 3' overlap exceeds limit
                 utr_stop = rightbound
-                #print 'UTR stop overlap for', start, stop
+                #print('UTR stop overlap for', start, stop)
             
         ''' Extract UTR from computed bounds, RC if negative strand '''
         proximal = contig_seq[utr_start:utr_stop].strip()
@@ -1068,7 +1069,7 @@ def extract_proximal_sequences(genome_gff, genome_fna, proximal_out, limits, max
                                 f_prox.write(proximal + '\n')
                                 proximal_count += 1
                                 
-    print 'Loaded', side, 'sequences:', proximal_count
+    print('Loaded', side, 'sequences:', proximal_count)
 
     
 def extract_noncoding(genome_gff, genome_fna, noncoding_out, flanking=(0,0),
@@ -1145,19 +1146,19 @@ def validate_gene_table(df_genes, df_alleles, log_group=1):
     '''
     dfg = load_feature_table(df_genes)
     dfa = load_feature_table(df_alleles)
-    print 'Validating gene clusters...'
+    print('Validating gene clusters...')
     num_inconsistencies = 0
     for g,genome in enumerate(df_genes.columns):
         if (g+1) % log_group == 0:
-            print g+1, 'Testing', genome
+            print(g+1, 'Testing', genome)
         genes = set(dfg[genome].dropna().index)
         alleles = dfa[genome].dropna().index
         allele_genes = set(alleles.map(__get_gene_from_allele__))
         if genes != allele_genes:
             inconsistencies = genes.symmetric_difference(allele_genes)
-            print '\tInconsistent:', inconsistencies
+            print('\tInconsistent:', inconsistencies)
             num_inconsistencies += len(inconsistencies)
-    print 'Gene Table Inconsistencies:', num_inconsistencies 
+    print('Gene Table Inconsistencies:', num_inconsistencies)
 
 
 def validate_gene_table_dense(df_genes, df_alleles):
@@ -1175,7 +1176,7 @@ def validate_gene_table_dense(df_genes, df_alleles):
     '''
     dfg = load_feature_table(df_genes)
     dfa = load_feature_table(df_alleles)
-    print 'Validating gene clusters...'
+    print('Validating gene clusters...')
     
     current_cluster = None; allele_data = []; 
     clusters_tested = 0; inconsistencies = 0
@@ -1189,12 +1190,12 @@ def validate_gene_table_dense(df_genes, df_alleles):
             is_consistent = np.array_equal(has_gene, dfg.loc[current_cluster,:].fillna(0).values)
             clusters_tested += 1
             if not is_consistent:
-                print 'Inconsistent', cluster
-                print has_gene
-                print dfg.loc[current_cluster,:].fillna(0).values
+                print('Inconsistent', cluster)
+                print(has_gene)
+                print(dfg.loc[current_cluster,:].fillna(0).values)
                 inconsistencies += 1
             if clusters_tested % 1000 == 0:
-                print '\tTested', clusters_tested, 'clusters'
+                print('\tTested', clusters_tested, 'clusters')
             allele_data = []
             current_cluster = cluster
         allele_data.append(np.array(allele_row[1:]))
@@ -1204,11 +1205,11 @@ def validate_gene_table_dense(df_genes, df_alleles):
     has_gene = alleles_all.sum(axis=0) > 0
     is_consistent = np.array_equal(has_gene, dfg.loc[current_cluster,:].fillna(0).values)
     if not is_consistent:
-        print 'Inconsistent', cluster
-        print has_gene
-        print dfg.loc[current_cluster,:].fillna(0).values
+        print('Inconsistent', cluster)
+        print(has_gene)
+        print(dfg.loc[current_cluster,:].fillna(0).values)
         inconsistencies += 1
-    print 'Gene Table Inconsistencies:', inconsistencies
+    print('Gene Table Inconsistencies:', inconsistencies)
     
 
 def validate_upstream_table(df_upstream, upstream_fna_paths, nr_upstream_fna,
@@ -1321,7 +1322,7 @@ def validate_table_against_fasta(df_features, genome_fasta_paths,
     
     ''' Pre-load allele names if available '''
     if allele_names: 
-        print 'Loading feature names...'
+        print('Loading feature names...')
         feathash_to_allele = {}
         with open(allele_names, 'r') as f:
             for line in f:
@@ -1339,7 +1340,7 @@ def validate_table_against_fasta(df_features, genome_fasta_paths,
                     feathash_to_allele[feature_hash] = allele
 
     ''' Pre-load hashes for non-redundant protein sequences '''
-    print 'Loading non-redundant sequences...'
+    print('Loading non-redundant sequences...')
     seqhash_to_feature = {}
     def load_sequence_entry(seq_blocks, header):
         if len(seq_blocks) > 0:
@@ -1347,7 +1348,7 @@ def validate_table_against_fasta(df_features, genome_fasta_paths,
             seq = seq if (allele_names is None) else seq + trim_variant(header)
             seqhash = __hash_sequence__(seq)
             if seqhash in seqhash_to_feature:
-                print 'COLLISION:' , header
+                print('COLLISION:' , header)
             seqhash_to_feature[seqhash] = header
 
     with open(features_fasta, 'r') as f_fasta:
@@ -1360,7 +1361,7 @@ def validate_table_against_fasta(df_features, genome_fasta_paths,
             else: # sequence encountered
                 seq_blocks.append(line.strip())
         load_sequence_entry(seq_blocks, header) # process last record
-    print 'Non-redundant sequences:', len(seqhash_to_feature)
+    print('Non-redundant sequences:', len(seqhash_to_feature))
 
     ''' Validate individual genomes against table '''
     
@@ -1388,7 +1389,7 @@ def validate_table_against_fasta(df_features, genome_fasta_paths,
     feature_counts = dfa.sum() # genome x total features
     for i, genome_fasta in enumerate(sorted(genome_fasta_paths)):
         if (i+1) % log_group == 0:
-            print 'Validating genome', i+1, ':', genome_fasta
+            print('Validating genome', i+1, ':', genome_fasta)
         ''' Load all features present in the genome '''
         genome_features = set()
         with open(genome_fasta, 'r') as f_fasta:
@@ -1414,9 +1415,9 @@ def validate_table_against_fasta(df_features, genome_fasta_paths,
         if not test:
             table_only = len(table_features.difference(genome_features))
             genome_only = len(genome_features.difference(table_features))
-            print genome, '\t', 'Table only:', table_only, '\t', 'Genome only:', genome_only
-    print 'Missing Features:', missing_features
-    print 'Feature Table Inconsistencies:', inconsistencies
+            print(genome, '\t', 'Table only:', table_only, '\t', 'Genome only:', genome_only)
+    print('Missing Features:', missing_features)
+    print('Feature Table Inconsistencies:', inconsistencies)
 
 
 def validate_upstream_table_direct(df_upstream, genome_fna_paths, nr_upstream_fna,
@@ -1469,7 +1470,7 @@ def validate_proximal_table_direct(df_prox, genome_fna_paths, nr_prox_fna, limit
     dfp = load_feature_table(df_prox)
     
     ''' Load non-redundant proximal sequences '''
-    print 'Loading', side, 'sequences...'
+    print('Loading', side, 'sequences...')
     nr_prox = load_sequences_from_fasta(nr_prox_fna)
             
     ''' Verify present of each proximal sequence within each genome '''
@@ -1478,7 +1479,7 @@ def validate_proximal_table_direct(df_prox, genome_fna_paths, nr_prox_fna, limit
         genome_contigs = load_sequences_from_fasta(genome_fna)
         genome = __get_genome_from_filename__(genome_fna)
         if (g+1) % log_group == 0:
-            print g+1, 'Evaluating', genome, genome_fna
+            print(g+1, 'Evaluating', genome, genome_fna)
         dfp_strain = dfp.loc[:,genome]
         table_prox = dfp_strain.index[pd.notnull(dfp_strain)] # proximal sequences as defined by the table
         table_prox_seqs = {nr_prox[x]:x for x in table_prox} # maps sequences to names
@@ -1497,25 +1498,25 @@ def validate_proximal_table_direct(df_prox, genome_fna_paths, nr_prox_fna, limit
                     
         ''' Report undetected proximal sequences '''
         for prox in table_prox_seqs:
-            print '\tMissing', table_prox_seqs[prox], 'from', genome
+            print('\tMissing', table_prox_seqs[prox], 'from', genome)
         
     ''' Count start/stop codons among non-redundant proximal sequences '''
     if limits[1] >= 3 and side == 'upstream':
-        print 'Computing start codon distribution...'
+        print('Computing start codon distribution...')
         if limits[1] == 3:
             get_start = lambda x: x[-3:]
         else:
             get_start = lambda x: x[-limits[1]:-limits[1]+3]
         start_codons = map(get_start, nr_prox.values())
-        print collections.Counter(start_codons)
+        print(collections.Counter(start_codons))
     elif limits[0] <= -3 and side == 'downstream':
-        print 'Computing stop codon distribution...'
+        print('Computing stop codon distribution...')
         if limits[0] == -3:
             get_stop = lambda x: x[:3]
         else:
             get_stop = lambda x: x[-limits[0]-3:-limits[0]]
         stop_codons = map(get_stop, nr_prox.values())
-        print collections.Counter(stop_codons)
+        print(collections.Counter(stop_codons))
 
         
 def generate_annotations(features, annotation_files):
@@ -1634,7 +1635,7 @@ def extract_annotations(genome_gffs, allele_name_file, annotations_out,
                                 else: # save only 3-term, or only 2-term if no locus_tag 
                                     fid = fid2 if (fid3 is None) else fid3
                                     annotations[fid] = product
-        print 'Loaded', len(annotations), 'annotations from batch', g+1, '-', min(n_gffs,g+batch)
+        print('Loaded', len(annotations), 'annotations from batch', g+1, '-', min(n_gffs,g+batch))
         
         ''' Incorporate newly loaded annotations '''
         with open(tmp_out, 'r') as f_last:
@@ -1705,14 +1706,14 @@ def extract_dominant_alleles(allele_table, allele_faa_file, dominant_out):
         return terms[0] + '_' + terms[1] + str(terms[2])
     
     ''' Setting up allele table '''
-    print 'Setting up allele table...'
+    print('Setting up allele table...')
     if type(allele_table) == str:
         df_alleles = pd.read_pickle(allele_table)
     else:
         df_alleles = allele_table
     
     ''' Identifying dominant alleles '''
-    print 'Identifying dominant alleles...'
+    print('Identifying dominant alleles...')
     df_counts = pd.DataFrame(df_alleles.fillna(0).sum(axis=1), columns=['count'])
     df_counts['gene'] = df_counts.index.map(allele_to_gene)
     dominant_alleles = [] # (gene, allele) pairs
@@ -1738,10 +1739,10 @@ def extract_dominant_alleles(allele_table, allele_faa_file, dominant_out):
         columns=['gene', 'dominant_allele', 'gene_count', 'allele_count'])
     df_dominant = df_dominant.set_index('gene')
     dominant_alleles = set(df_dominant.dominant_allele.values)
-    print 'Found dominant alleles', df_dominant.shape, len(dominant_alleles)
+    print('Found dominant alleles', df_dominant.shape, len(dominant_alleles))
     
     ''' Extracting dominant allele sequences '''
-    print 'Exportint dominant alleles...',
+    print('Exportint dominant alleles...', end=' ')
     alleles_written = 0
     with open(allele_faa_file, 'r') as f_allele:
         with open(dominant_out, 'w+') as f_dom:
@@ -1754,7 +1755,7 @@ def extract_dominant_alleles(allele_table, allele_faa_file, dominant_out):
                         write_seq = False
                 elif write_seq: # sequence for dominant allele
                     f_dom.write(line)
-    print alleles_written
+    print(alleles_written)
     return df_dominant
     
 
