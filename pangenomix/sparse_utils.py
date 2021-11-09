@@ -106,6 +106,28 @@ def compress_rows_spmatrix(spmat):
         
     spblock = spdata[block_representatives,:]
     return spblock, block_definitions
+
+
+def sparse_arrays_to_spmatrix(dfs):
+    '''
+    Converts a binary DataFrame with SparseArray columns into a
+    scipy.sparse.coo_matrix.
+    '''
+    positions = []
+    fill_values = []
+    for i in range(dfs.shape[1]):
+        col_entries = dfs.iloc[:,i].values
+        col_num_entries = col_entries.sp_index.npoints
+        col_positions = np.empty((2,col_num_entries), dtype='int')
+        col_positions[0,:] = col_entries.sp_index.indices
+        col_positions[1,:] = i
+        col_fill_values = col_entries.sp_values
+        positions.append(col_positions)
+        fill_values.append(col_fill_values)
+    positions = np.concatenate(positions, axis=1)
+    fill_values = np.concatenate(fill_values)
+    spdata = scipy.sparse.coo_matrix((fill_values, positions), shape=dfs.shape)
+    return spdata
     
 
 class LightSparseDataFrame:
