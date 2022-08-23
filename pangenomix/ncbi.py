@@ -251,8 +251,100 @@ def download_ncbi_assemblies_using_ftp(accession_ids, output_dir, ftp_url='ftp.n
             elif len(assembly) > 1:
                 print a+1, 'WARN: Multiple assemblies found, skipping:', acc
         ftp.close()
+        
+def bidirectional_blast(seq1_fasta, seq2_fasta, report_dir, 
+    blast_params={'evalue':0.0000000001, 'num_threads':1}, 
+    seq1_blast_db=None, seq2_blast_db=None):
+    ''' 
+    Takes FASTA files in the format <strain>.faa or <strain>.fna
+    and applies a bidirectional blast against a set of reference sequences.
+    Parameters
+    ----------
+    seq1_fasta : str
+        Path to first set of sequences as FASTA
+    seq2_fasta : str
+        Path to second set of sequences as FASTA
+    report_dir : str
+        Directory to output blast files
+    blast_params : dict
+        Additional blastp parameters (default: {'evalue':0.0000000001, 'num_threads':1})
+    seq1_blast_db : str
+        Directory to check for/generate blast databases for first set. 
+        If None, will use the same directory and seq1_fasta (default None)
+    seq2_blast_db : str 
+        Directory to check for/generate blast databases for second set. 
+        If None, will use the same directory and seq2_fasta (default None)
+    Returns
+    -------
+    forward_report : str
+        Path to TSV blast report for seq1 as query -> seq2 as database
+    reverse_report : str
+        Path to TSV blast report for seq2 as query -> seq1 as database
+    '''
 
-    
+    dtype = 'prot' if seq1_fasta[-4:] == '.faa' else 'nucl'
+    add_slash = lambda x: x if x[-1] =='/' else x + '/'
+    get_file_dir = lambda x: '/'.join(x.split('/')[:-1])+'/' if '/' in x else ''
+    get_filename = lambda x: x.split('/')[-1]
+    name1 = '.'.join(get_filename(seq1_fasta).split('.')[:-1])
+    name2 = '.'.join(get_filename(seq2_fasta).split('.')[:-1])
+
+    ''' Prepare outputs and check for/generate blast databases '''
+    report_dir = add_slash(report_dir) # make sure / is at the end of directory to output blast reports
+    forward_report = report_dir + name1 + '_to_' + name2 + '.tsv'
+    reverse_report = report_dir + name2 + '_to_' + name1 + '.tsv'
+    db1_dir = add_slash(seq1_blast_db) if seq1_blast_db else get_file_dir(seq1_fasta) # dir w/ query blast files
+    db2_dir = add_slash(seq2_blast_db) if seq2_blast_db else get_file_dir(seq2_fasta) # dir w/ ref blast files
+
+    for directory in [report_dir, db1_dir, db2_dir]:
+        if not os.path.isdir(directory):
+            os.mkdir(directory)
+
+    def __make_blast_db__(seq_path, db_out_dir=None):
+        ''' Generates a blast database for a protein coding sequence fasta in 
+            the same directory by default or specified directory. '''
+        seq_filename = get_filename(seq_path)
+        db_dir = add_slash(db_out_dir) if db_out_dir else get_file_dir(seq_path)
+        db_name = db_dir + seq_filename
+        db_files = map(lambda ext: db_name + ext, ['.phr', '.pin', '.psq'])
+        db_exists = True
+        for db_file in db_files: # check that the three blast db files <name>.phr/pin/psq exist
+            db_exists = db_exists and os.path.exists(db_file)
+        if not db_exists: # if at least one db file doesn't exist, regenerate db
+            init_db_args = ['makeblastdb', '-in', seq_path, '-input_type', 'fasta', 
+                            '-dbtype', dtype, '-out', db_name]
+            __run_commands__(init_db_args, log_to_console=verbose)
+        return db_name
+
+    ''' Run bidirectional blast '''
+    db1_name = __make_blast_db__(seq1_fasta, db_out_dir=db1_dir) # path to query blast db
+    db2_name = __make_blast_db__(seq2_fasta, db_out_dir=db2_dir) # path to reference blast db
+    extra_blast_args = []
+    for param, value in blast_params.items():
+        extra_blast_args += ['-' + str(param), str(value)]
+    blasttype = 'blastp' if dtype == 'prot' else 'blastn'
+    forward_args = [blasttype, '-db', db2_name, '-query', seq1_fasta,
+                    '-out', forward_report, '-outfmt', '6'] + extra_blast_args
+    reverse_args = [blasttype, '-db', db1_name, '-query', seq2_fasta,
+                    '-out', reverse_report, '-outfmt', '6'] + extra_blast_args
+    print(forward_args)
+    for line in __stream_stdout__(' '.join(forward_args)):
+        print(line)
+    print(reverse_args)
+    for line in __stream_stdout__(' '.join(reverse_args)):
+        print(line)
+    return forward_report, reverse_report
+
+
+def __stream_stdout__(command):
+    ''' Hopefully Jupyter-safe method for streaming process stdout '''
+    process = sp.Popen(command, stdout=sp.PIPE, shell=True)
+    while True:
+        line = process.stdout.readline().decode('utf-8')
+        if not line:
+            break
+        yield line.rstrip()
+        
 def __filter_existing_assemblies__(accession_ids, outdir):
     ''' Separates accession IDs into ones missing/already downloaded  '''
     target_accs = []; existing_accs = []
