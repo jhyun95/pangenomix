@@ -369,7 +369,7 @@ def cluster_with_cdhit(fasta_file, cdhit_out, cdhit_args={'-n':5, '-c':0.8}):
         Dictionary of alignment arguments to be provided to CD-Hit, other than
         -i, -o, and -d. Default is for FAA files. (default {'-n':5, '-c':0.8})
     ''' 
-    cdhit_prog = 'cd-hit-est' if fasta_file[-4:].lower() == '.fna' else 'cd-hit'
+    cdhit_prog = 'cdhit-est' if fasta_file[-4:].lower() == '.fna' else 'cdhit'
     args = [cdhit_prog, '-i', fasta_file, '-o', cdhit_out, '-d', '0']
     for arg in cdhit_args:
         args += [arg, str(cdhit_args[arg])]
@@ -1820,18 +1820,18 @@ def create_feature_name(name, cluster_type, cluster_num, variant_type=None, vari
         Header to precede short name
     cluster_type : str
         "cds" or "noncoding", abbreviated as C or T, respectively
-    cluster_num : int
+    cluster_num : int or str
         ID of cluster
     variant_type : str
         "allele" or "upstream" or "downstream", abbreviated as A, U, or D,
         respectively. If None, assumes feature refers to whole cluster (default None)
-    variant_num : int
+    variant_num : int or str
         ID of variant. If negative, assumes feature refers to whole cluster (default -1)
     '''
     short_name = name + '_'
     cluster_name_short = CLUSTER_TYPES[cluster_type]
     short_name += cluster_name_short + str(cluster_num)
-    if (not variant_type is None) and (variant_num >= 0):
+    if (not variant_type is None) and (int(variant_num) >= 0):
         variant_type_short = VARIANT_TYPES[variant_type]
         short_name += variant_type_short + str(variant_num)
     return short_name
@@ -1924,13 +1924,13 @@ def __get_header_from_fasta_line__(line):
 
 def __hash_sequence__(seq):
     ''' Hashes arbitary length strings/sequences to bytestrings '''
-    return hashlib.sha256(seq).digest()
+    return hashlib.sha256(seq.encode('utf-8')).digest()
 
 def __stream_stdout__(command):
     ''' Hopefully Jupyter-safe method for streaming process stdout '''
     process = sp.Popen(command, stdout=sp.PIPE, shell=True)
     while True:
-        line = process.stdout.readline()
+        line = process.stdout.readline().decode('utf-8')
         if not line:
             break
         yield line.rstrip()
