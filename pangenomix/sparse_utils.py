@@ -109,6 +109,15 @@ def compress_rows_spmatrix(spmat):
     return spblock, block_definitions
 
 
+def sparse_arrays_to_lsdf(dfs):
+    '''
+    Converts a binary DataFrame with SparseArray columns into a
+    LightSparseDataFrame
+    '''
+    spdata = sparse_arrays_to_spmatrix(dfs)
+    return LightSparseDataFrame(index=dfs.index, columns=dfs.columns, data=spdata)
+
+
 def sparse_arrays_to_spmatrix(dfs):
     '''
     Converts a binary DataFrame with SparseArray columns into a

@@ -27,7 +27,9 @@ import collections
 import pandas as pd
 import numpy as np
 import scipy.sparse
+import pangenomix.sparse_utils
 
+LOG_RATE = 10 # used in build_genetic_feature_tables(), interval to report progress
 CLUSTER_TYPES = {'cds':'C', 'noncoding':'T'}
 VARIANT_TYPES = {'allele':'A', 'upstream':'U', 'downstream':'D'}
 CLUSTER_TYPES_REV = {v:k for k,v in CLUSTER_TYPES.items()}
@@ -40,8 +42,8 @@ for bp in list(DNA_COMPLEMENT.keys()):
 
     
 def build_cds_pangenome(genome_faa_paths, output_dir, name='Test', 
-                        cdhit_args={'-n':5, '-c':0.8}, 
-                        fastasort_path=None, save_csv=True):
+                        cdhit_args={'-n':5, '-c':0.8}, fastasort_path=None, 
+                        output_format='lsdf'):
     ''' 
     Constructs a pan-genome based on protein sequences with the following steps:
     1) Merge FAA files for genomes of interest into a non-redundant list
@@ -49,11 +51,15 @@ def build_cds_pangenome(genome_faa_paths, output_dir, name='Test',
     3) Rename non-redundant CDS as <name>_C#A#, referring to cluster and allele number
     4) Compile allele/gene membership into binary allele x genome and gene x genome tables
     
-    Generates eight files within output_dir:
-    1) <name>_strain_by_allele.pickle.gz, binary allele x genome table with SparseArray structure
-    2) <name>_strain_by_gene.pickle.gz, binary gene x genome table with SparseArray structure
-    1) <name>_strain_by_allele.csv.gz, binary allele x genome table as flat file (if save_csv)
-    2) <name>_strain_by_gene.csv.gz, binary gene x genome table as flat file (if save_csv)
+    Generates the following files within output_dir:
+    1) For strain x gene matrix, generates either
+        - <name>_strain_by_gene.npz + <name>_strain_by_gene.npz.txt, 
+          binary gene x genome table in sparse_utils.LightSparseDataFrame format
+        - <name>_strain_by_gene.pickle.gz, binary gene x genome table with SparseArrays
+    2) For strain x allele matrix, generates either
+        - <name>_strain_by_allele.npz + <name>_strain_by_gene.allele.txt, 
+          binary allele x genome table in sparse_utils.LightSparseDataFrame format
+        - <name>_strain_by_allele.pickle.gz, binary allele x genome table with SparseArrays
     3) <name>_nr.faa, all non-redundant CDSs observed, with headers <name>_C#A#
     4) <name>_nr.faa.cdhit.clstr, CD-Hit output file from clustering
     5) <name>_allele_names.tsv, mapping between <name>_C#A# to original CDS headers
@@ -76,16 +82,18 @@ def build_cds_pangenome(genome_faa_paths, output_dir, name='Test',
     fastasort_path : str
         Path to Exonerate's fastasort binary, optionally for sorting
         final FAA files (default None)
-    save_csv : bool
-        If true, saves allele and gene tables as csv.gz. May be limiting
-        step for very large tables (default True)
+    output_format : 'lsdf' or 'sparr'
+        If 'lsdf', returns sparse_utils.LightSparseDataFrame (wrapper for 
+        scipy.sparse matrices with index labels) and saves to npz.
+        If 'sparr', returns the SparseArray DataFrame legacy format from 
+        Python 2 and saves to pickle (default 'lsdf').
         
     Returns 
     -------
-    df_alleles : pd.DataFrame
-        Binary allele x genome table
-    df_genes : pd.DataFrame
-        Binary gene x genome table
+    df_alleles : sparse_utils.LightSparseDataFrame or pd.DataFrame
+        Binary allele x genome table (see output_format)
+    df_genes : sparse_utils.LightSparseDataFrame or pd.DataFrame
+        Binary gene x genome table (see output_format)
     '''
     
     ''' Merge FAAs into one file with non-redundant sequences '''
@@ -118,34 +126,37 @@ def build_cds_pangenome(genome_faa_paths, output_dir, name='Test',
     
     ''' Process gene/allele membership into binary tables '''    
     df_alleles, df_genes = build_genetic_feature_tables(
-        output_nr_clstr, genome_faa_paths, name,
-        cluster_type='cds', header_to_allele=header_to_allele)
+        output_nr_clstr, genome_faa_paths, name, cluster_type='cds', 
+        output_format=output_format, header_to_allele=header_to_allele)
     
-    ''' Save tables as PICKLE.GZ (preserve SparseArrays) and CSV.GZ (backup flat file) '''
+    ''' Saving gene and allele tables '''
     output_allele_table = output_dir + '/' + name + '_strain_by_allele'
     output_gene_table = output_dir + '/' + name + '_strain_by_gene'
     output_allele_table = output_allele_table.replace('//','/')
     output_gene_table = output_gene_table.replace('//','/')
-    output_allele_csv = output_allele_table + '.csv.gz'
-    output_gene_csv = output_gene_table + '.csv.gz'
-    output_allele_pickle = output_allele_table + '.pickle.gz'
-    output_gene_pickle = output_gene_table + '.pickle.gz'
-    print('Saving', output_allele_pickle, '...')
-    df_alleles.to_pickle(output_allele_pickle)
-    print('Saving', output_gene_pickle, '...')
-    df_genes.to_pickle(output_gene_pickle)
-    if save_csv:
-        print('Saving', output_allele_csv, '...')
-        df_alleles.to_csv(output_allele_csv)
-        print('Saving', output_gene_csv, '...')
-        df_genes.to_csv(output_gene_csv)
-
+    if output_format == 'lsdf':
+        ''' Saving to NPZ + NPZ.TXT (see sparse_utils.LightSparseDataFrame) '''
+        output_allele_npz = output_allele_table + '.npz'
+        output_gene_npz = output_gene_table + '.npz'
+        print('Saving', output_allele_npz, '...')
+        df_alleles.to_npz(output_allele_npz)
+        print('Saving', output_gene_npz, '...')
+        df_genes.to_npz(output_gene_npz)
+    elif output_format == 'sparr':
+        ''' Saving to legacy format PICKLE.GZ (SparseArray structure) '''
+        output_allele_pickle = output_allele_table + '.pickle.gz'
+        output_gene_pickle = output_gene_table + '.pickle.gz'
+        print('Saving', output_allele_pickle, '...')
+        df_alleles.to_pickle(output_allele_pickle)
+        print('Saving', output_gene_pickle, '...')
+        df_genes.to_pickle(output_gene_pickle)
     return df_alleles, df_genes
 
 
 def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,0),
                               allowed_features=['transcript', 'tRNA', 'rRNA', 'misc_binding'],
-                              cdhit_args={'-n':5, '-c':0.8}, fastasort_path=None, save_csv=True):
+                              cdhit_args={'-n':5, '-c':0.8}, fastasort_path=None, 
+                              output_format='lsdf'):
     ''' 
     Constructs a pan-genome based on noncoding sequences with the following steps:
     1) Extract non-coding transcripts (optionally with flanking NTs) based on FNA/GFF pairs
@@ -153,11 +164,15 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
     3) Rename non-redundant transcript as <name>_T#A#, referring to transcript cluster and allele number
     4) Compile allele/transcript membership into binary transcript allele x genome and transcript x genome tables
     
-    Generates eight files within output_dir:
-    1) <name>_strain_by_noncoding_allele.pickle.gz, binary allele x genome table with SparseArray structure
-    2) <name>_strain_by_noncoding.pickle.gz, binary gene x genome table with SparseArray structure
-    1) <name>_strain_by_noncoding_allele.csv.gz, binary allele x genome table as flat file (if save_csv)
-    2) <name>_strain_by_noncoding.csv.gz, binary gene x genome table as flat file (if save_csv)
+    Generates the following files within output_dir:
+    1) For strain x noncoding cluster matrix, generates either
+        - <name>_strain_by_noncoding.npz + <name>_strain_by_noncoding.npz.txt, 
+          binary gene x genome table in sparse_utils.LightSparseDataFrame format
+        - <name>_strain_by_noncoding.pickle.gz, binary gene x genome table with SparseArrays
+    2) For strain x noncoding variant matrix, generates either
+        - <name>_strain_by_noncoding_allele.npz + <name>_strain_by_noncoding_allele.allele.txt, 
+          binary allele x genome table in sparse_utils.LightSparseDataFrame format
+        - <name>_strain_by_noncoding_allele.pickle.gz, binary allele x genome table with SparseArrays
     3) <name>_noncoding_nr.fna, all non-redundant non-coding seqs observed, with headers <name>_T#A#
     4) <name>_noncoding_nr.fna.cdhit.clstr, CD-HIT-EST output file from clustering
     5) <name>_noncoding_allele_names.tsv, mapping between <name>_T#A# to original transcript headers
@@ -187,17 +202,22 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
     fastasort_path : str
         Path to Exonerate's fastasort binary, optionally for sorting
         final FAA files (default None)
-    save_csv : bool
-        If true, saves allele and gene tables as csv.gz. May be limiting
-        step for very large tables (default True)
+    output_format : 'lsdf' or 'sparr'
+        If 'lsdf', returns sparse_utils.LightSparseDataFrame (wrapper for 
+        scipy.sparse matrices with index labels) and saves to npz.
+        If 'sparr', returns the SparseArray DataFrame legacy format from 
+        Python 2 and saves to pickle (default 'lsdf').
         
     Returns 
-    -------
-    df_nc_alleles : pd.DataFrame
-        Binary non-coding allele x genome table
-    df_nc_genes : pd.DataFrame
-        Binary non-coding gene x genome table
+    -------       
+    df_nc_alleles : sparse_utils.LightSparseDataFrame or pd.DataFrame
+        Binary noncoding allele x genome table (see output_format)
+    df_nc_genes : sparse_utils.LightSparseDataFrame or pd.DataFrame
+        Binary noncoding gene x genome table (see output_format)
     '''
+    if not output_format in {'lsdf', 'sparr'}:
+        print('Unrecognized output format, switching to lsdf')
+        output_format = 'lsdf'
     
     ''' Extract non-coding sequences from all genomes '''
     print('Extracting non-coding sequences...')
@@ -251,8 +271,8 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
     
     ''' Process gene/allele membership into binary tables '''    
     df_nc_alleles, df_nc_genes = build_genetic_feature_tables(
-        output_nr_clstr, genome_noncoding_paths, name, 
-        cluster_type='noncoding', header_to_allele=header_to_allele)
+        output_nr_clstr, genome_noncoding_paths, name, cluster_type='noncoding', 
+        output_format=output_format, header_to_allele=header_to_allele)
     df_nc_alleles.columns = df_nc_alleles.columns.map(lambda x: x.replace('_noncoding',''))
     df_nc_genes.columns = df_nc_genes.columns.map(lambda x: x.replace('_noncoding','')) 
     
@@ -261,20 +281,22 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
     output_gene_table = output_dir + '/' + name + '_strain_by_noncoding_gene'
     output_allele_table = output_allele_table.replace('//','/')
     output_gene_table = output_gene_table.replace('//','/')
-    output_allele_csv = output_allele_table + '.csv.gz'
-    output_gene_csv = output_gene_table + '.csv.gz'
-    output_allele_pickle = output_allele_table + '.pickle.gz'
-    output_gene_pickle = output_gene_table + '.pickle.gz'
-    print('Saving', output_allele_pickle, '...')
-    df_nc_alleles.to_pickle(output_allele_pickle)
-    print('Saving', output_gene_pickle, '...')
-    df_nc_genes.to_pickle(output_gene_pickle)
-    if save_csv:
-        print('Saving', output_allele_csv, '...')
-        df_nc_alleles.to_csv(output_allele_csv)
-        print('Saving', output_gene_csv, '...')
-        df_nc_genes.to_csv(output_gene_csv)
-    
+    if output_format == 'lsdf':
+        ''' Saving to NPZ + NPZ.TXT (see sparse_utils.LightSparseDataFrame) '''
+        output_allele_npz = output_allele_table + '.npz'
+        output_gene_npz = output_gene_table + '.npz'
+        print('Saving', output_allele_npz, '...')
+        df_nc_alleles.to_npz(output_allele_npz)
+        print('Saving', output_gene_npz, '...')
+        df_nc_genes.to_npz(output_gene_npz)
+    elif output_format == 'sparr':
+        ''' Saving to legacy format PICKLE.GZ (SparseArray structure) '''
+        output_allele_pickle = output_allele_table + '.pickle.gz'
+        output_gene_pickle = output_gene_table + '.pickle.gz'
+        print('Saving', output_allele_pickle, '...')
+        df_nc_alleles.to_pickle(output_allele_pickle)
+        print('Saving', output_gene_pickle, '...')
+        df_nc_genes.to_pickle(output_gene_pickle)
     return df_nc_alleles, df_nc_genes
     
 
@@ -489,7 +511,8 @@ def rename_genes_and_alleles(clstr_file, nr_fasta_in, nr_fasta_out,
     
 
 def build_genetic_feature_tables(clstr_file, genome_fasta_paths, name='Test', cluster_type='cds',
-                                 shared_header_file=None, header_to_allele=None):
+                                 output_format='lsdf', shared_header_file=None, header_to_allele=None,
+                                 log_rate=LOG_RATE):
     '''
     Builds two binary tables based on the presence/absence of genetic features, 
     allele x genome (allele_table_out) and gene x genome (gene_table_out).
@@ -508,19 +531,26 @@ def build_genetic_feature_tables(clstr_file, genome_fasta_paths, name='Test', cl
     cluster_type : str
         If 'cds', features are named <name>_C#A# for gene clusters/alleles. 
         If 'noncoding', features are named <name>_T#A# for transcripts (default 'cds')
+    output_format : 'lsdf' or 'sparr'
+        If 'lsdf', returns sparse_utils.LightSparseDataFrame (wrapper for 
+        scipy.sparse matrices with index labels) and saves to npz.
+        If 'sparr', returns the SparseArray DataFrame legacy format from 
+        Python 2 and saves to pickle (default 'lsdf').
     shared_header_file : str
         Path to shared header TSV file, if synonym headers are not mapped
         in header_to_allele or header_to_allele is not provided (default None)
     header_to_allele : dict
         Pre-calculated header-allele mappings corresponding to clstr_file,
         if available from rename_genes_and_alleles() (default None)
+    log_rate : int
+        Interval to report conversion of genomes to binary vector (default 10)
 
     Returns 
     -------
-    df_alleles : pd.DataFrame
-        Binary allele x genome table
-    df_genes : pd.DataFrame
-        Binary gene x genome table
+    df_alleles : sparse_utils.LightSparseDataFrame or pd.DataFrame
+        Binary allele x genome table (see output_format)
+    df_genes : sparse_utils.LightSparseDataFrame or pd.DataFrame
+        Binary gene x genome table (see output_format)
     '''
     
     ''' Load header-allele mappings '''
@@ -545,18 +575,16 @@ def build_genetic_feature_tables(clstr_file, genome_fasta_paths, name='Test', cl
     print('Clusters:', len(gene_order))
     print('Alleles:', len(allele_order))
     
-    ''' To use sparse matrix, map genomes, alleles, and genes to positions '''
+    ''' To use sparse matrices, map genomes, alleles, and genes to positions '''
     allele_indices = {allele_order[i]:i for i in range(len(allele_order))}
-    gene_indices = {gene_order[i]:i for i in range(len(gene_order))}   
-    allele_arrays = {} # maps genome:allele vectors as SparseArrays
-    gene_arrays = {} # maps genome:gene vector as SparseArrays
-
+    gene_indices = {gene_order[i]:i for i in range(len(gene_order))} 
+    sp_alleles = scipy.sparse.dok_matrix((len(allele_order), len(genome_order)), dtype='int')
+    sp_genes = scipy.sparse.dok_matrix((len(gene_order), len(genome_order)), dtype='int') 
+        
     ''' Scan original genome file for allele and gene membership '''
     for i, genome_fasta in enumerate(sorted(genome_fasta_paths)):
         genome = __get_genome_from_filename__(genome_fasta)
         genome_i = genome_order.index(genome)
-        allele_arrays[genome] = np.zeros(shape=len(allele_order), dtype='int64')
-        gene_arrays[genome] = np.zeros(shape=len(gene_order), dtype='int64')
         with open(genome_fasta, 'r') as f_fasta:
             header = ''; seq = '' # track the sequence to skip over empty sequences
             for line in f_fasta.readlines(): # pre-load, slight speed-up
@@ -566,38 +594,54 @@ def build_genetic_feature_tables(clstr_file, genome_fasta_paths, name='Test', cl
                         if header in header_to_allele:
                             allele_name = header_to_allele[header]
                             allele_i = allele_indices[allele_name]
-                            allele_arrays[genome][allele_i] = 1
                             gene = __get_gene_from_allele__(allele_name)
                             gene_i = gene_indices[gene]
-                            gene_arrays[genome][gene_i] = 1
+                            sp_alleles[allele_i,genome_i] = 1
+                            sp_genes[gene_i,genome_i] = 1
                         else:
                             print('MISSING:', header)
                     header = __get_header_from_fasta_line__(line)
                     seq = '' # reset sequence
                 else: # sequence line encountered
                     seq += line.strip()
-            if len(seq) > 0: # process last record
+            if len(seq) > 0: # process last entry
                 if header in header_to_allele:
                     allele_name = header_to_allele[header]
                     allele_i = allele_indices[allele_name]
-                    allele_arrays[genome][allele_i] = 1
                     gene = __get_gene_from_allele__(allele_name)
                     gene_i = gene_indices[gene]
-                    gene_arrays[genome][gene_i] = 1
+                    sp_alleles[allele_i,genome_i] = 1
+                    sp_genes[gene_i,genome_i] = 1
                 else:
                     print('MISSING:', header)
-                
-        allele_arrays[genome] = pd.SparseArray(allele_arrays[genome])
-        gene_arrays[genome] = pd.SparseArray(gene_arrays[genome])
-        allele_arrays[genome].fill_value = np.nan
-        gene_arrays[genome].fill_value = np.nan
-        print('Updating genome', i+1, ':', genome, end=' ')
-        print('\tAlleles:', allele_arrays[genome].sum(), '\tClusters:', gene_arrays[genome].sum())
+        if (i+1) % log_rate == 0:
+            print('Updating genome', i+1, ':', genome)
+    
+    ''' Export binary matrix with index labels '''
+    if output_format == 'lsdf':
+        ''' Convert scipy.sparse -> sparse_utils.LightSparseDataFrame '''
+        print('Building LightSparseDataFrame')
+        df_alleles = pangenomix.sparse_utils.LightSparseDataFrame(
+            index=allele_order, columns=genome_order, data=sp_alleles.tocoo())
+        df_genes = pangenomix.sparse_utils.LightSparseDataFrame(
+            index=gene_order, columns=genome_order, data=sp_genes.tocoo())
+    elif output_format == 'sparr':
+        ''' Convert indices -> SparseArrays - > DataFrame'''
+        print('Converting columns to SparseArrays...')
+        sp_alleles = sp_alleles.tocsc()
+        sp_genes = sp_genes.tocsc()
+        allele_arrays = {}; gene_arrays = {} # maps genome:allele/gene vectors as SparseArrays
+        for genome_i, genome in enumerate(genome_order):
+            allele_col = sp_alleles[:,genome_i].toarray()[:,0]
+            gene_col = sp_genes[:,genome_i].toarray()[:,0]
+            allele_arrays[genome] = pd.SparseArray(allele_col)
+            gene_arrays[genome] = pd.SparseArray(gene_col)
+            allele_arrays[genome].fill_value = np.nan
+            gene_arrays[genome].fill_value = np.nan
+        print('Building SparseArray DataFrame...')
+        df_alleles = pd.DataFrame(data=allele_arrays, index=allele_order)
+        df_genes = pd.DataFrame(data=gene_arrays, index=gene_order)
         
-    ''' Construct DataFrame '''
-    print('Building DataFrame...')
-    df_alleles = pd.DataFrame(data=allele_arrays, index=allele_order)
-    df_genes = pd.DataFrame(data=gene_arrays, index=gene_order)
     return df_alleles, df_genes
 
 
@@ -1131,6 +1175,8 @@ def extract_noncoding(genome_gff, genome_fna, noncoding_out, flanking=(0,0),
     
 def validate_gene_table(df_genes, df_alleles, log_group=1):
     '''
+    TODO: Update to handle LSDF tables
+    
     Verifies that the gene x genome table is consistent with the
     corresponding allele x genome table. Optimized to run column-by-column
     rather than gene-by-gene for sparse tables.
@@ -1163,6 +1209,8 @@ def validate_gene_table(df_genes, df_alleles, log_group=1):
 
 def validate_gene_table_dense(df_genes, df_alleles):
     '''
+    TODO: Update to handle LSDF tables
+    
     Verifies that the gene x genome table is consistent with the
     corresponding allele x genome table. Original approach for
     when df_genes and df_alleles are dense DataFrames.
@@ -1215,6 +1263,8 @@ def validate_gene_table_dense(df_genes, df_alleles):
 def validate_upstream_table(df_upstream, upstream_fna_paths, nr_upstream_fna,
                             allele_names, log_group=1):
     '''
+    TODO: Update to handle LSDF tables
+    
     Verifies that the upstream x genome table is consistent with
     the corresponding extracted upstream sequences. See 
     validate_table_against_fasta() for details.
@@ -1242,6 +1292,8 @@ def validate_upstream_table(df_upstream, upstream_fna_paths, nr_upstream_fna,
 def validate_downstream_table(df_downstream, downstream_fna_paths, nr_downstream_fna, 
                               allele_names, log_group=1):
     '''
+    TODO: Update to handle LSDF tables
+    
     Verifies that the downstream x genome table is consistent with
     the corresponding extracted downstream sequences. See 
     validate_table_against_fasta() for details.
@@ -1269,6 +1321,8 @@ def validate_downstream_table(df_downstream, downstream_fna_paths, nr_downstream
 def validate_allele_table(df_alleles, genome_fasta_paths, 
                           alleles_fasta, log_group=1):
     ''' 
+    TODO: Update to handle LSDF tables
+    
     Verifies that the allele x genome table is consistent with the
     the corresponding fasta files. Originally validate_table_against_fasta().
     
@@ -1295,6 +1349,8 @@ def validate_table_against_fasta(df_features, genome_fasta_paths,
                                  features_fasta, allele_names=None, 
                                  log_group=1):
     '''
+    TODO: Update to handle LSDF tables
+    
     Verifies that a table x genome table is consistent with the original 
     fasta files. Works for the following cases:
     - CDS allele table vs original CDS FAA files
@@ -1446,6 +1502,8 @@ def validate_downstream_table_direct(df_downstream, genome_fna_paths, nr_downstr
 
 def validate_proximal_table_direct(df_prox, genome_fna_paths, nr_prox_fna, limits, side, log_group=1):
     '''
+    TODO: Update to handle LSDF tables
+    
     Does a partial validation of the proximal x genome table by checking that
     the recorded proximal sequences are present in the corresponding genome, 
     and counts start codons observed. DOES NOT check the exact location of the
@@ -1683,6 +1741,8 @@ def extract_annotations(genome_gffs, allele_name_file, annotations_out,
 
 def extract_dominant_alleles(allele_table, allele_faa_file, dominant_out):
     '''
+    TODO: Update to handle LSDF tables
+    
     Extracts the most common allele for each gene from an allele x genome table.
     
     Parameters
@@ -1788,6 +1848,8 @@ def load_sequences_from_fasta(fasta, header_fxn=None, seq_fxn=None, filter_fxn=N
 
 def load_feature_table(feature_table):
     ''' 
+    TODO: Update to handle LSDF tables
+    
     Loads DataFrames from CSV, CSV.GZ, PICKLE, or PICKLE.GZ.
     Uses index_col=0 for CSVs. Returns feature_table if provided 
     with anything other than a string.
