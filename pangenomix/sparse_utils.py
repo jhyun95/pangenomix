@@ -12,6 +12,7 @@ with some pandas DataFrame-like functions.
 
 from __future__ import print_function
 import numpy as np
+import pandas as pd
 import scipy.sparse
 
 def read_lsdf(npz_file, label_file=None):
@@ -128,8 +129,47 @@ def sparse_arrays_to_spmatrix(dfs):
     fill_values = np.concatenate(fill_values)
     spdata = scipy.sparse.coo_matrix((fill_values, positions), shape=dfs.shape)
     return spdata
-    
 
+
+def labelslice_sparse_arrays(dfs, spmat=None, indices=None, columns=None):
+    '''
+    Efficiently slices a binary DataFrame with SparseArray columns by label, similar to .loc
+    '''
+    i_indices = None; i_columns = None
+    if not (indices is None):
+        index_to_pos = {label:i for i,label in enumerate(dfs.index)}
+        i_indices = [index_to_pos[x] for x in indices]
+    if not (columns is None):
+        columns_to_pos = {label:i for i,label in enumerate(dfs.columns)}
+        i_columns = [columns_to_pos[x] for x in columns]
+    return islice_sparse_arrays(dfs, spmat, i_indices, i_columns)
+
+
+def islice_sparse_arrays(dfs, spmat=None, i_indices=None, i_columns=None):
+    '''
+    Efficiently slices a binary DataFrame with SparseArray columns by position, similar to .iloc 
+    '''
+    if spmat is None: # no pre-converted matrix
+        X = sparse_arrays_to_spmatrix(dfs)
+    else:
+        X = spmat
+        
+    if not (i_indices is None):
+        X = X.tocsr()[i_indices,:]
+    if not (i_columns is None):
+        X = X.tocsc()[:,i_columns]
+    X = X.tocsc()
+    new_index = dfs.index if i_indices is None else dfs.index[i_indices]
+    new_columns = dfs.columns if i_columns is None else dfs.columns[i_columns]
+    dfs_new = {}
+    for i, column in enumerate(new_columns):
+        col_data = X[:,i].toarray()[:,0]
+        dfs_new[column] = pd.SparseArray(col_data)
+    dfs_new = pd.DataFrame.from_dict(dfs_new)
+    dfs_new.index = new_index
+    return dfs_new, X
+
+    
 class LightSparseDataFrame:
     
     def __init__(self, index, columns, data):
