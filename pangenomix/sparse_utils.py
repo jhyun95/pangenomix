@@ -312,3 +312,18 @@ class LightSparseDataFrame:
             for column_val in self.columns:
                 f.write(column_val + '\n')
         scipy.sparse.save_npz(npz_file, self.data.tocoo())
+
+        
+    def to_sparse_arrays(self):
+        '''
+        Converts to pd.DataFrame with pd.SparseArray columns (old format)
+        '''
+        sp_arrays = {}
+        data_csc = self.data.tocsc()
+        for c, column in enumerate(self.columns):
+            # CSC column -> dense column -> SparseArray
+            col_vector = data_csc[:,c].toarray()[:,0]
+            sp_arrays[column] = pd.SparseArray(col_vector)
+            sp_arrays[column].fill_value = np.nan
+        return pd.DataFrame(data=sp_arrays, index=self.index)
+        

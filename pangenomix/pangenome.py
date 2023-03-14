@@ -618,30 +618,15 @@ def build_genetic_feature_tables(clstr_file, genome_fasta_paths, name='Test', cl
             print('Updating genome', i+1, ':', genome)
     
     ''' Export binary matrix with index labels '''
-    if output_format == 'lsdf':
-        ''' Convert scipy.sparse -> sparse_utils.LightSparseDataFrame '''
-        print('Building LightSparseDataFrame')
-        df_alleles = pangenomix.sparse_utils.LightSparseDataFrame(
-            index=allele_order, columns=genome_order, data=sp_alleles.tocoo())
-        df_genes = pangenomix.sparse_utils.LightSparseDataFrame(
-            index=gene_order, columns=genome_order, data=sp_genes.tocoo())
-    elif output_format == 'sparr':
-        ''' Convert indices -> SparseArrays - > DataFrame'''
-        print('Converting columns to SparseArrays...')
-        sp_alleles = sp_alleles.tocsc()
-        sp_genes = sp_genes.tocsc()
-        allele_arrays = {}; gene_arrays = {} # maps genome:allele/gene vectors as SparseArrays
-        for genome_i, genome in enumerate(genome_order):
-            allele_col = sp_alleles[:,genome_i].toarray()[:,0]
-            gene_col = sp_genes[:,genome_i].toarray()[:,0]
-            allele_arrays[genome] = pd.SparseArray(allele_col)
-            gene_arrays[genome] = pd.SparseArray(gene_col)
-            allele_arrays[genome].fill_value = np.nan
-            gene_arrays[genome].fill_value = np.nan
-        print('Building SparseArray DataFrame...')
-        df_alleles = pd.DataFrame(data=allele_arrays, index=allele_order)
-        df_genes = pd.DataFrame(data=gene_arrays, index=gene_order)
-        
+    print('Building binary matrix...')
+    df_alleles = pangenomix.sparse_utils.LightSparseDataFrame(
+        index=allele_order, columns=genome_order, data=sp_alleles.tocoo())
+    df_genes = pangenomix.sparse_utils.LightSparseDataFrame(
+        index=gene_order, columns=genome_order, data=sp_genes.tocoo())    
+    if output_format == 'sparr':
+        print('Converting to SparseArrays...')
+        df_alleles = df_alleles.to_sparse_arrays()
+        df_genes = df_genes.to_sparse_arrays()
     return df_alleles, df_genes
 
 
