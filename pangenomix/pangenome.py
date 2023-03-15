@@ -159,7 +159,7 @@ def build_cds_pangenome(genome_faa_paths, output_dir, name='Test',
 def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,0),
                               allowed_features=['transcript', 'tRNA', 'rRNA', 'misc_binding'],
                               cdhit_args={'-n':5, '-c':0.8}, fastasort_path=None, 
-                              output_format='lsdf'):
+                              output_format='lsdf', fna_output_footer='', overwrite_extract=False):
     ''' 
     Constructs a pan-genome based on noncoding sequences with the following steps:
     1) Extract non-coding transcripts (optionally with flanking NTs) based on FNA/GFF pairs
@@ -210,6 +210,16 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
         scipy.sparse matrices with index labels) and saves to npz.
         If 'sparr', returns the SparseArray DataFrame legacy format from 
         Python 2 and saves to pickle (default 'lsdf').
+    fna_output_footer : str
+        Additional text to insert at the end of noncoding feature FNA files.
+        Can be useful if multiple types of noncoding regions are desired for
+        the same set of genomes (i.e. including different flanking regions). 
+        By default, for a given genome defined as (<genome>.gff, <genome>.fna), 
+        noncoding feature regions are output at:
+        derived/<genome>_noncoding<fna_output_footer>.fna (default '')
+    overwrite_extract : bool
+        If true, will re-extract noncoding regions even if the target file
+        already exists (default False)
         
     Returns 
     -------       
@@ -233,13 +243,16 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
         genome_nc_dir = genome_dir + 'derived/' # output noncoding sequences here
         if not os.path.exists(genome_nc_dir):
             os.mkdir(genome_nc_dir)
-        genome_nc = genome_nc_dir + genome + '_noncoding.fna'
+        genome_nc = genome_nc_dir + genome + '_noncoding' + fna_output_footer + '.fna'
+        genome_noncoding_paths.append(genome_nc)
             
         ''' Extract non-coding sequences '''
-        print(i+1, genome)
-        genome_noncoding_paths.append(genome_nc)
-        extract_noncoding(genome_gff, genome_fna, genome_nc, 
-            flanking=flanking, allowed_features=allowed_features)
+        if os.path.exists(genome_nc) and (not overwrite_extract):
+            print(i+1, 'Using pre-existing noncoding sequences for', genome)
+        else:
+            print(i+1, 'Extracting noncoding regions for', genome)
+            extract_noncoding(genome_gff, genome_fna, genome_nc, 
+                flanking=flanking, allowed_features=allowed_features)
         
     ''' Reduce to non-redundant sequence set '''
     print('Identifying non-redundant non-coding sequences...')
@@ -276,10 +289,10 @@ def build_noncoding_pangenome(genome_data, output_dir, name='Test', flanking=(0,
     df_nc_alleles, df_nc_genes = build_genetic_feature_tables(
         output_nr_clstr, genome_noncoding_paths, name, cluster_type='noncoding', 
         output_format=output_format, header_to_allele=header_to_allele)
-    df_nc_alleles.columns = df_nc_alleles.columns.map(lambda x: x.replace('_noncoding',''))
-    df_nc_genes.columns = df_nc_genes.columns.map(lambda x: x.replace('_noncoding','')) 
+    df_nc_alleles.columns = [x.replace('_noncoding' + fna_output_footer,'') for x in df_nc_alleles.columns]
+    df_nc_genes.columns = [x.replace('_noncoding' + fna_output_footer,'') for x in df_nc_genes.columns]
     
-    ''' Save tables as PICKLE.GZ (preserve SparseArrays) and CSV.GZ (backup flat file) '''
+    ''' Saving gene and allele tables '''
     output_allele_table = output_dir + '/' + name + '_strain_by_noncoding_allele'
     output_gene_table = output_dir + '/' + name + '_strain_by_noncoding_gene'
     output_allele_table = output_allele_table.replace('//','/')
@@ -696,7 +709,7 @@ def load_header_to_allele(clstr_file=None, shared_header_file=None,
 def build_upstream_pangenome(genome_data, allele_names, output_dir, limits=(-50,3), 
                              name='Test', include_fragments=False, max_overlap=-1, 
                              fastasort_path=None, output_format='lsdf', 
-                             fna_output_footer='', overwrite_proximal=False):
+                             fna_output_footer='', overwrite_extract=False):
     '''
     Extracts nucleotides upstream of coding sequences for multiple genomes, 
     create <genome>_upstream.fna files in the same directory for each genome.
@@ -707,14 +720,14 @@ def build_upstream_pangenome(genome_data, allele_names, output_dir, limits=(-50,
         genome_data, allele_names, output_dir, limits, side='upstream', name=name, 
         include_fragments=include_fragments, max_overlap=max_overlap, 
         fastasort_path=fastasort_path, output_format=output_format,
-        fna_output_footer=fna_output_footer, overwrite_proximal=overwrite_proximal)
+        fna_output_footer=fna_output_footer, overwrite_extract=overwrite_extract)
 
     
 
 def build_downstream_pangenome(genome_data, allele_names, output_dir, limits=(-3,50), 
                                name='Test', include_fragments=False, max_overlap=-1, 
                                fastasort_path=None, output_format='lsdf', 
-                               fna_output_footer='', overwrite_proximal=False):
+                               fna_output_footer='', overwrite_extract=False):
     '''
     Extracts nucleotides downstream of coding sequences for multiple genomes, 
     create <genome>_downstream.fna files in the same directory for each genome.
@@ -725,12 +738,12 @@ def build_downstream_pangenome(genome_data, allele_names, output_dir, limits=(-3
         genome_data, allele_names, output_dir, limits, side='downstream', name=name, 
         include_fragments=include_fragments, max_overlap=max_overlap, 
         fastasort_path=fastasort_path, output_format=output_format,
-        fna_output_footer=fna_output_footer, overwrite_proximal=overwrite_proximal)
+        fna_output_footer=fna_output_footer, overwrite_extract=overwrite_extract)
 
     
 def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side, name='Test', 
                              include_fragments=False, max_overlap=-1, fastasort_path=None, 
-                             output_format='lsdf', fna_output_footer='', overwrite_proximal=False):
+                             output_format='lsdf', fna_output_footer='', overwrite_extract=False):
     '''
     Extracts nucleotides proximal to coding sequences for multiple genomes, 
     create genome-specific proximal sequence fna files in the same directory for 
@@ -774,12 +787,12 @@ def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side
         If 'sparr', returns the SparseArray DataFrame legacy format from 
         Python 2 and saves to pickle (default 'lsdf')
     fna_output_footer : str
-        Additional text to insert at the end of general up/downstream FNA files.
+        Additional text to insert at the end of extracted up/downstream FNA files.
         Can be useful if multiple types of up/downstream regions are desired for
         the same set of genomes. By default, for a given genome defined as
         (<genome>.gff, <genome>.fna), up/downstream regions are output at
         derived/<genome>_<side><fna_output_footer>.fna (default '')
-    overwrite_proximal : bool
+    overwrite_extract : bool
         If true, will re-extract proximal regions even if the target file
         already exists (default False)
         
@@ -811,7 +824,7 @@ def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side
         genome_proximals.append(genome_prox)
             
         ''' Extract proximal sequences '''
-        if os.path.exists(genome_prox) and (not overwrite_proximal):
+        if os.path.exists(genome_prox) and (not overwrite_extract):
             print(i+1, 'Using pre-existing', side, 'regions for', genome)
         else:
             print(i+1, 'Extracting', side, 'regions for', genome)
