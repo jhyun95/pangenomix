@@ -95,6 +95,9 @@ def build_cds_pangenome(genome_faa_paths, output_dir, name='Test',
     df_genes : sparse_utils.LightSparseDataFrame or pd.DataFrame
         Binary gene x genome table (see output_format)
     '''
+    if not output_format in {'lsdf', 'sparr'}:
+        print('Unrecognized output format, switching to lsdf')
+        output_format = 'lsdf'
     
     ''' Merge FAAs into one file with non-redundant sequences '''
     print('Identifying non-redundant CDS sequences...')
@@ -692,7 +695,8 @@ def load_header_to_allele(clstr_file=None, shared_header_file=None,
 
 def build_upstream_pangenome(genome_data, allele_names, output_dir, limits=(-50,3), 
                              name='Test', include_fragments=False, max_overlap=-1, 
-                             fastasort_path=None, save_csv=True):
+                             fastasort_path=None, output_format='lsdf', 
+                             fna_output_footer='', overwrite_proximal=False):
     '''
     Extracts nucleotides upstream of coding sequences for multiple genomes, 
     create <genome>_upstream.fna files in the same directory for each genome.
@@ -700,14 +704,17 @@ def build_upstream_pangenome(genome_data, allele_names, output_dir, limits=(-50,
     i.e. after build_cds_pangenome(). See build_proximal_pangenome() for parameters.
     '''
     return build_proximal_pangenome(
-        genome_data, allele_names, output_dir, limits, 
-        side='upstream', name=name, include_fragments=include_fragments, 
-        max_overlap=max_overlap, fastasort_path=fastasort_path, save_csv=save_csv)
+        genome_data, allele_names, output_dir, limits, side='upstream', name=name, 
+        include_fragments=include_fragments, max_overlap=max_overlap, 
+        fastasort_path=fastasort_path, output_format=output_format,
+        fna_output_footer=fna_output_footer, overwrite_proximal=overwrite_proximal)
+
     
 
 def build_downstream_pangenome(genome_data, allele_names, output_dir, limits=(-3,50), 
                                name='Test', include_fragments=False, max_overlap=-1, 
-                               fastasort_path=None, save_csv=True):
+                               fastasort_path=None, output_format='lsdf', 
+                               fna_output_footer='', overwrite_proximal=False):
     '''
     Extracts nucleotides downstream of coding sequences for multiple genomes, 
     create <genome>_downstream.fna files in the same directory for each genome.
@@ -715,17 +722,21 @@ def build_downstream_pangenome(genome_data, allele_names, output_dir, limits=(-3
     i.e. after build_cds_pangenome(). See build_proximal_pangenome() for parameters.
     '''
     return build_proximal_pangenome(
-        genome_data, allele_names, output_dir, limits, 
-        side='downstream', name=name, include_fragments=include_fragments, 
-        max_overlap=max_overlap, fastasort_path=fastasort_path, save_csv=save_csv)
+        genome_data, allele_names, output_dir, limits, side='downstream', name=name, 
+        include_fragments=include_fragments, max_overlap=max_overlap, 
+        fastasort_path=fastasort_path, output_format=output_format,
+        fna_output_footer=fna_output_footer, overwrite_proximal=overwrite_proximal)
 
     
 def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side, name='Test', 
-                             include_fragments=False, max_overlap=-1, fastasort_path=None, save_csv=True):
+                             include_fragments=False, max_overlap=-1, fastasort_path=None, 
+                             output_format='lsdf', fna_output_footer='', overwrite_proximal=False):
     '''
     Extracts nucleotides proximal to coding sequences for multiple genomes, 
-    create genome-specific proximal sequence fna files in the same directory for each genome.
-    Then, classifies/names them relative to gene clusters identified by coding sequence,  
+    create genome-specific proximal sequence fna files in the same directory for 
+    each genome (see parameter fna_output_footer for details).
+    
+    Then, classifies them relative to gene clusters identified by coding sequence,  
     i.e. after build_cds_pangenome(). See extract_proximal_sequences() and
     consolidate_proximal() for more details.
     
@@ -757,16 +768,30 @@ def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side
     fastasort_path : str
         Path to Exonerate's fastasort binary, optionally for sorting
         final FNA files (default None)
-    save_csv : bool
-        If true, saves allele and gene tables as csv.gz. May be limiting
-        step for very large tables (default True)
+    output_format : 'lsdf' or 'sparr'
+        If 'lsdf', returns sparse_utils.LightSparseDataFrame (wrapper for 
+        scipy.sparse matrices with index labels) and saves to npz.
+        If 'sparr', returns the SparseArray DataFrame legacy format from 
+        Python 2 and saves to pickle (default 'lsdf')
+    fna_output_footer : str
+        Additional text to insert at the end of general up/downstream FNA files.
+        Can be useful if multiple types of up/downstream regions are desired for
+        the same set of genomes. By default, for a given genome defined as
+        (<genome>.gff, <genome>.fna), up/downstream regions are output at
+        derived/<genome>_<side><fna_output_footer>.fna (default '')
+    overwrite_proximal : bool
+        If true, will re-extract proximal regions even if the target file
+        already exists (default False)
         
     Returns
     -------
-    df_proximal : pd.DataFrame
-        Binary proximal x genome table
+    df_proximal : sparse_utils.LightSparseDataFrame or pd.DataFrame
+        Binary proximal x genome table (see output_format)
     '''
-    
+    if not output_format in {'lsdf', 'sparr'}:
+        print('Unrecognized output format, switching to lsdf')
+        output_format = 'lsdf'
+        
     ''' Load header-allele name mapping '''
     print('Loading header-allele mapping...')
     feature_to_allele = __load_feature_to_allele__(allele_names)
@@ -775,29 +800,31 @@ def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side
     print('Extracting', side, 'sequences...')
     genome_proximals = []
     for i, gff_fna in enumerate(genome_data):
-        ''' Prepare output path '''
+        ''' Prepare output path for extracted proximal regions '''
         genome_gff, genome_fna = gff_fna
         genome = __get_genome_from_filename__(genome_gff)
         genome_dir = '/'.join(genome_gff.split('/')[:-1]) + '/' if '/' in genome_gff else ''
         genome_prox_dir = genome_dir + 'derived/'
         if not os.path.exists(genome_prox_dir):
             os.mkdir(genome_prox_dir)
-        genome_prox = genome_prox_dir + genome + '_' + side + '.fna'
+        genome_prox = genome_prox_dir + genome + '_' + side + fna_output_footer + '.fna'
+        genome_proximals.append(genome_prox)
             
         ''' Extract proximal sequences '''
-        print(i+1, genome)
-        genome_proximals.append(genome_prox)
-        extract_proximal_sequences(genome_gff, genome_fna, genome_prox, 
-                                   limits=limits, side=side,
-                                   feature_to_allele=feature_to_allele,
-                                   include_fragments=include_fragments,
-                                   max_overlap=max_overlap)
+        if os.path.exists(genome_prox) and (not overwrite_proximal):
+            print(i+1, 'Using pre-existing', side, 'regions for', genome)
+        else:
+            print(i+1, 'Extracting', side, 'regions for', genome)
+            extract_proximal_sequences(genome_gff, genome_fna, genome_prox, 
+                limits=limits, side=side, feature_to_allele=feature_to_allele,
+                include_fragments=include_fragments, max_overlap=max_overlap)
         
     ''' Consolidate non-redundant proximal sequences per gene '''
     print('Identifying non-redundant', side, 'sequences per gene...')
     nr_prox_out = output_dir + '/' + name + '_nr_' + side + '.fna'
     nr_prox_out = nr_prox_out.replace('//','/')
-    df_proximal = consolidate_proximal(genome_proximals, nr_prox_out, feature_to_allele, side)
+    df_proximal = consolidate_proximal(genome_proximals, nr_prox_out, 
+        feature_to_allele, side, output_format=output_format)
     
     ''' Optionally sort non-redundant proximal sequences file '''
     if fastasort_path:
@@ -810,17 +837,20 @@ def build_proximal_pangenome(genome_data, allele_names, output_dir, limits, side
     ''' Save proximal x genome table '''
     prox_table_out = output_dir + '/' + name + '_strain_by_' + side
     prox_table_out = prox_table_out.replace('//','/')
-    prox_table_pickle = prox_table_out + '.pickle.gz'
-    prox_table_csv = prox_table_out + '.csv.gz'
-    print('Saving', prox_table_pickle, '...')
-    df_proximal.to_pickle(prox_table_pickle)
-    if save_csv:
-        print('Saving', prox_table_csv, '...')
-        df_proximal.to_csv(prox_table_csv)
+    if output_format == 'lsdf':
+        ''' Saving to NPZ + NPZ.TXT (see sparse_utils.LightSparseDataFrame) '''
+        prox_table_npz = prox_table_out + '.npz'
+        print('Saving', prox_table_npz, '...')
+        df_proximal.to_npz(prox_table_npz)
+    elif output_format == 'sparr':
+        ''' Saving to legacy format PICKLE.GZ (SparseArray structure) '''
+        prox_table_pickle = prox_table_out + '.pickle.gz'
+        print('Saving', prox_table_pickle, '...')
+        df_proximal.to_pickle(prox_table_pickle)
     return df_proximal
 
     
-def consolidate_proximal(genome_proximals, nr_proximal_out, feature_to_allele, side):
+def consolidate_proximal(genome_proximals, nr_proximal_out, feature_to_allele, side, output_format='lsdf'):
     ''' 
     Consolidates proximal sequences to a non-redudnant set with respect to each
     gene described by feature_to_allele (maps_features to <name>_C#A#), then
@@ -837,13 +867,17 @@ def consolidate_proximal(genome_proximals, nr_proximal_out, feature_to_allele, s
         Dictionary mapping headers to <name>_C#A# alleles
     side : str
         'upstream' or 'downstream' for 5'UTR or 3'UTR
+    output_format : 'lsdf' or 'sparr'
+        If 'lsdf', returns sparse_utils.LightSparseDataFrame (wrapper for 
+        scipy.sparse matrices with index labels) and saves to npz.
+        If 'sparr', returns the SparseArray DataFrame legacy format from 
+        Python 2 and saves to pickle (default 'lsdf')
     
     Returns
     -------
-    df_proximal : pd.DataFrame
-         Binary proximal x genome table
+    df_proximal : sparse_utils.LightSparseDataFrame or pd.DataFrame
+        Binary proximal x genome table (see output_format)
     '''
-    
     ftype_abb = VARIANT_TYPES[side]
     gene_to_unique_proximal = {} # maps gene:prox_seq:prox_seq_id (int)
     genome_to_proximal = {} # maps genome:proximal_name:1 if present (<name>_C#U# or <name>_C#D#)
@@ -908,21 +942,25 @@ def consolidate_proximal(genome_proximals, nr_proximal_out, feature_to_allele, s
                     f_nr_prox.write(prox_seq + '\n')
                     new_sequence = False
                     
-    ''' Convert nested dict to dict of genome:SparseArrays once all proximal sequences are known '''
+    ''' Convert nested dict to dict into sparse matrix once all proximal sequences are known '''
     print('Sparsifying', side, 'table...')
     prox_order = sorted(list(unique_proximal_ids))
     del unique_proximal_ids
     prox_indices = {prox_order[i]:i for i in range(len(prox_order))} # map proximal ID to index
-    for g,genome in enumerate(genome_order):
+    
+    sp_proximal = scipy.sparse.dok_matrix((len(prox_order), len(genome_order)), dtype='int')
+    for genome_i,genome in enumerate(genome_order):
         prox_array = np.zeros(shape=len(prox_order), dtype='int64')
         for genome_prox in genome_to_proximal[genome].keys():
             prox_i = prox_indices[genome_prox]
-            prox_array[prox_i] = 1
-        genome_to_proximal[genome] = pd.SparseArray(prox_array)
-        genome_to_proximal[genome].fill_value = np.nan
-        
-    print('Constructing DataFrame...')
-    df_proximal = pd.DataFrame(data=genome_to_proximal, index=prox_order)
+            sp_proximal[prox_i, genome_i] = 1
+            
+    print('Building binary matrix...')
+    df_proximal = pangenomix.sparse_utils.LightSparseDataFrame(
+        index=prox_order, columns=genome_order, data=sp_proximal.tocoo())
+    if output_format == 'sparr':
+        print('Converting to SparseArrays...')
+        df_proximal = df_proximal.to_sparse_arrays()
     return df_proximal
 
 
@@ -1010,10 +1048,8 @@ def extract_proximal_sequences(genome_gff, genome_fna, proximal_out, limits, max
             rightbound += max_overlap
             if utr_start < leftbound: # 5' overlap exceeds limit
                 utr_start = leftbound
-                #print('UTR start overlap for', start, stop)
             if utr_stop > rightbound: # 3' overlap exceeds limit
                 utr_stop = rightbound
-                #print('UTR stop overlap for', start, stop)
             
         ''' Extract UTR from computed bounds, RC if negative strand '''
         proximal = contig_seq[utr_start:utr_stop].strip()
